@@ -1,0 +1,25 @@
+syntax = "proto2";
+package ipfs.noise;
+
+message NoiseExtensions {
+    repeated bytes webtransport_certhashes = 1;
+    repeated string stream_muxers = 2;
+}
+
+message NoiseHandshakePayload {
+    optional bytes identity_key = 1;
+    optional bytes identity_sig = 2;
+    optional NoiseExtensions extensions = 3;
+}
+
+enum KeyType {
+    RSA = 0;
+    Ed25519 = 1;
+    Secp256k1 = 2;
+    ECDSA = 3;
+}
+
+message PublicKey {
+    required KeyType type = 1;
+    required bytes data = 2;
+}

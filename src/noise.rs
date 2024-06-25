@@ -1,12 +1,21 @@
 use bytes::Bytes;
 use futures_util::{SinkExt, StreamExt};
-use snow::Builder;
+use prost::Message;
+use snow::{Builder, HandshakeState};
 use tokio::net::TcpStream;
-use tokio_util::codec::LengthDelimitedCodec;
+use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
-const MSG_LEN: usize = 65535;
+use crate::noise_proto::{KeyType, NoiseHandshakePayload, PublicKey};
 
-pub async fn perform_handshake(stream: &mut TcpStream) -> Result<(), Box<dyn std::error::Error>> {
+pub const MSG_LEN: usize = 65535;
+
+pub async fn perform_handshake(
+    stream: &mut TcpStream,
+) -> Result<
+    (HandshakeState, Framed<&mut TcpStream, LengthDelimitedCodec>),
+    Box<dyn std::error::Error>,
+> {
+    let id_keypair = libp2p::identity::ed25519::Keypair::generate();
     let static_keypair = Builder::new("Noise_XX_25519_ChaChaPoly_SHA256".parse().unwrap())
         .generate_keypair()
         .unwrap();
@@ -38,15 +47,40 @@ pub async fn perform_handshake(stream: &mut TcpStream) -> Result<(), Box<dyn std
 
     let mut payload = vec![0u8; rcv_buf.len()];
     initiator.read_message(&rcv_buf, &mut payload)?;
-    let payload_len = rcv_buf.len();
 
     // -> s, se
+    let payload = create_noise_payload(&static_keypair, &id_keypair);
     let mut buf = [0u8; MSG_LEN];
-    let len = initiator.write_message(&payload[..payload_len], &mut buf)?;
+    let len = initiator.write_message(&payload, &mut buf)?;
     println!("-> s, se: Sent final handshake message, length: {}", len);
     transport.send(Bytes::copy_from_slice(&buf[..len])).await?;
 
-    println!("2. Noise handshake completed successfully.");
+    if initiator.is_handshake_finished() {
+        println!("2. Noise handshake completed successfully.");
+    } else {
+        println!("⚠️ Failed to establish noise handshake.");
+    }
 
-    Ok(())
+    Ok((initiator, transport))
+}
+
+fn create_noise_payload(
+    static_keypair: &snow::Keypair,
+    id_keypair: &libp2p::identity::ed25519::Keypair,
+) -> Vec<u8> {
+    let mut payload = NoiseHandshakePayload::default();
+    let identity_key = PublicKey {
+        r#type: KeyType::Ed25519 as i32,
+        data: id_keypair.public().to_bytes().to_vec(),
+    };
+
+    payload.identity_key = Some(identity_key.encode_to_vec());
+
+    let identity_sig =
+        id_keypair.sign(&[&b"noise-libp2p-static-key:"[..], &static_keypair.public].concat());
+    payload.identity_sig = Some(identity_sig);
+
+    let mut bytes = Vec::with_capacity(payload.encoded_len());
+    payload.encode(&mut bytes).unwrap();
+    bytes
 }
