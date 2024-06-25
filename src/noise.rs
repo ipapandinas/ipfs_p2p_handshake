@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use futures_util::{SinkExt, StreamExt};
 use prost::Message;
-use snow::{Builder, HandshakeState};
+use snow::{Builder, TransportState};
 use tokio::net::TcpStream;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
@@ -12,7 +12,7 @@ pub const MSG_LEN: usize = 65535;
 pub async fn perform_handshake(
     stream: &mut TcpStream,
 ) -> Result<
-    (HandshakeState, Framed<&mut TcpStream, LengthDelimitedCodec>),
+    (TransportState, Framed<&mut TcpStream, LengthDelimitedCodec>),
     Box<dyn std::error::Error>,
 > {
     let id_keypair = libp2p::identity::ed25519::Keypair::generate();
@@ -61,6 +61,8 @@ pub async fn perform_handshake(
         println!("⚠️ Failed to establish noise handshake.");
     }
 
+    let initiator = initiator.into_transport_mode()?;
+
     Ok((initiator, transport))
 }
 
@@ -83,4 +85,14 @@ fn create_noise_payload(
     let mut bytes = Vec::with_capacity(payload.encoded_len());
     payload.encode(&mut bytes).unwrap();
     bytes
+}
+
+pub fn decrypt_message(
+    mut initiator: TransportState,
+    rcv_buf: &[u8],
+) -> Result<String, Box<dyn std::error::Error>> {
+    let mut raw_decrypted_message = vec![0u8; rcv_buf.len()];
+    initiator.read_message(rcv_buf, &mut raw_decrypted_message)?;
+    let decrypted_message = String::from_utf8_lossy(&raw_decrypted_message[..]);
+    Ok(decrypted_message.trim_end_matches('\n').into())
 }

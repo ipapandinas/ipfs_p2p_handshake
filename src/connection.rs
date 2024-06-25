@@ -38,10 +38,11 @@ pub async fn request_noise_protocol(
     stream: &mut TcpStream,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut connection = MultistreamSelectConnection::new(stream);
+    connection.read_response().await?;
+
     connection.request_protocol(MULTISTREAM_PROTOCOL).await?;
     connection.request_protocol(NOISE_PROTOCOL).await?;
 
-    connection.read_response().await?;
     let response = connection.read_response().await?;
     if response == NOISE_PROTOCOL {
         println!("1. Noise protocol negotiated successfully.");
