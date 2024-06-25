@@ -2,6 +2,7 @@ use bytes::{BufMut, BytesMut};
 use futures_util::{SinkExt, StreamExt};
 use tokio::net::TcpStream;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
+use tracing::info;
 
 use crate::error::ConnectionError;
 
@@ -45,7 +46,7 @@ pub async fn request_noise_protocol(stream: &mut TcpStream) -> Result<(), Connec
 
     let response = connection.read_response().await?;
     if response == NOISE_PROTOCOL {
-        println!("1. Noise protocol negotiated successfully.");
+        info!("1. Noise protocol negotiated successfully.");
     } else {
         return Err(ConnectionError::InvalidResponse(response));
     }

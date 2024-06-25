@@ -4,6 +4,7 @@ use prost::Message;
 use snow::{Builder, TransportState};
 use tokio::net::TcpStream;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
+use tracing::{debug, info};
 
 use crate::{
     error::NoiseError,
@@ -33,7 +34,7 @@ pub async fn perform_handshake(
     // -> e
     let mut noise_msg = [0u8; MSG_LEN];
     let len = initiator.write_message(&[], &mut noise_msg)?;
-    println!("-> e: Sent first handshake message, length: {}", len);
+    debug!("-> e: Sent first handshake message, length: {}", len);
     transport
         .send(Bytes::copy_from_slice(&noise_msg[..len]))
         .await?;
@@ -43,7 +44,7 @@ pub async fn perform_handshake(
         .next()
         .await
         .ok_or(NoiseError::HandshakeFailed("EOF".to_string()))??;
-    println!(
+    debug!(
         "<- e, ee, s, es: Received response, length: {}",
         rcv_buf.len()
     );
@@ -55,13 +56,15 @@ pub async fn perform_handshake(
     let payload = create_noise_payload(&static_keypair, &id_keypair);
     let mut buf = [0u8; MSG_LEN];
     let len = initiator.write_message(&payload, &mut buf)?;
-    println!("-> s, se: Sent final handshake message, length: {}", len);
+    debug!("-> s, se: Sent final handshake message, length: {}", len);
     transport.send(Bytes::copy_from_slice(&buf[..len])).await?;
 
     if initiator.is_handshake_finished() {
-        println!("2. Noise handshake completed successfully.");
+        info!("2. Noise handshake completed successfully.");
     } else {
-        println!("⚠️ Failed to establish noise handshake.");
+        return Err(NoiseError::HandshakeFailed(
+            "Failed to complete handshake".to_string(),
+        ));
     }
 
     let initiator = initiator.into_transport_mode()?;

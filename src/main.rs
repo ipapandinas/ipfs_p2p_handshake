@@ -9,11 +9,14 @@ pub mod noise_proto {
 use error::MainError;
 use futures_util::stream::StreamExt;
 use tokio::net::TcpStream;
+use tracing::{debug, info};
 
 const ADDRESS: &str = "127.0.0.1:4001";
 
 #[tokio::main]
 async fn main() -> Result<(), MainError> {
+    tracing_subscriber::fmt::init();
+
     let mut stream = TcpStream::connect(ADDRESS).await?;
 
     // 1 - multistream-select negotiation to negotiate the Noise protocol
@@ -24,12 +27,12 @@ async fn main() -> Result<(), MainError> {
 
     // 3 - ensure there are no pending messages to be read
     if let Some(Ok(rcv_buf)) = transport.next().await {
-        println!("Message over secure layer: {:?}", rcv_buf);
+        debug!("Raw secure message: {:?}", rcv_buf);
         // Decrypt the message
         let decrypted_message = noise::decrypt_message(initiator, &rcv_buf)?;
-        println!("Decrypted message: {}", decrypted_message);
+        debug!("Decrypted message: {}", decrypted_message);
     } else {
-        println!("No initial message received over secure layer.");
+        info!("No initial message received.");
     }
 
     Ok(())
