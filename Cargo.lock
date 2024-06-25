@@ -914,6 +914,7 @@ dependencies = [
  "prost-build",
  "prost-types",
  "snow",
+ "thiserror",
  "tokio",
  "tokio-util",
 ]

@@ -5,16 +5,16 @@ use snow::{Builder, TransportState};
 use tokio::net::TcpStream;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
-use crate::noise_proto::{KeyType, NoiseHandshakePayload, PublicKey};
+use crate::{
+    error::NoiseError,
+    noise_proto::{KeyType, NoiseHandshakePayload, PublicKey},
+};
 
 pub const MSG_LEN: usize = 65535;
 
 pub async fn perform_handshake(
     stream: &mut TcpStream,
-) -> Result<
-    (TransportState, Framed<&mut TcpStream, LengthDelimitedCodec>),
-    Box<dyn std::error::Error>,
-> {
+) -> Result<(TransportState, Framed<&mut TcpStream, LengthDelimitedCodec>), NoiseError> {
     let id_keypair = libp2p::identity::ed25519::Keypair::generate();
     let static_keypair = Builder::new("Noise_XX_25519_ChaChaPoly_SHA256".parse().unwrap())
         .generate_keypair()
@@ -39,7 +39,10 @@ pub async fn perform_handshake(
         .await?;
 
     // <- e, ee, s, es
-    let rcv_buf = transport.next().await.ok_or("EOF")??;
+    let rcv_buf = transport
+        .next()
+        .await
+        .ok_or(NoiseError::HandshakeFailed("EOF".to_string()))??;
     println!(
         "<- e, ee, s, es: Received response, length: {}",
         rcv_buf.len()
@@ -90,7 +93,7 @@ fn create_noise_payload(
 pub fn decrypt_message(
     mut initiator: TransportState,
     rcv_buf: &[u8],
-) -> Result<String, Box<dyn std::error::Error>> {
+) -> Result<String, NoiseError> {
     let mut raw_decrypted_message = vec![0u8; rcv_buf.len()];
     initiator.read_message(rcv_buf, &mut raw_decrypted_message)?;
     let decrypted_message = String::from_utf8_lossy(&raw_decrypted_message[..]);

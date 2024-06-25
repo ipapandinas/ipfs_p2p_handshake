@@ -3,6 +3,8 @@ use futures_util::{SinkExt, StreamExt};
 use tokio::net::TcpStream;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
+use crate::error::ConnectionError;
+
 const MULTISTREAM_PROTOCOL: &str = "/multistream/1.0.0";
 const NOISE_PROTOCOL: &str = "/noise";
 
@@ -19,7 +21,7 @@ impl<'a> MultistreamSelectConnection<'a> {
         Self { transport }
     }
 
-    async fn request_protocol(&mut self, protocol: &str) -> Result<(), Box<dyn std::error::Error>> {
+    async fn request_protocol(&mut self, protocol: &str) -> Result<(), ConnectionError> {
         let mut message = BytesMut::with_capacity(protocol.len() + 1);
         message.put_slice(protocol.as_bytes());
         message.put_bytes(b'\n', 1);
@@ -27,16 +29,14 @@ impl<'a> MultistreamSelectConnection<'a> {
         Ok(())
     }
 
-    async fn read_response(&mut self) -> Result<String, Box<dyn std::error::Error>> {
-        let buffer = self.transport.next().await.ok_or("EOF")??;
+    async fn read_response(&mut self) -> Result<String, ConnectionError> {
+        let buffer = self.transport.next().await.ok_or(ConnectionError::EOF)??;
         let protocol = String::from_utf8_lossy(&buffer[..]);
         Ok(protocol.trim_end_matches('\n').into())
     }
 }
 
-pub async fn request_noise_protocol(
-    stream: &mut TcpStream,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn request_noise_protocol(stream: &mut TcpStream) -> Result<(), ConnectionError> {
     let mut connection = MultistreamSelectConnection::new(stream);
     connection.read_response().await?;
 
@@ -47,10 +47,7 @@ pub async fn request_noise_protocol(
     if response == NOISE_PROTOCOL {
         println!("1. Noise protocol negotiated successfully.");
     } else {
-        println!(
-            "⚠️ Failed to negotiate noise protocol. Response: {}",
-            response
-        );
+        return Err(ConnectionError::InvalidResponse(response));
     }
 
     Ok(())

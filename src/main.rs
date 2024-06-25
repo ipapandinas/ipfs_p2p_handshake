@@ -1,17 +1,19 @@
 mod connection;
+mod error;
 mod noise;
 
 pub mod noise_proto {
     include!(concat!(env!("OUT_DIR"), "/ipfs.noise.rs"));
 }
 
+use error::MainError;
 use futures_util::stream::StreamExt;
 use tokio::net::TcpStream;
 
 const ADDRESS: &str = "127.0.0.1:4001";
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), MainError> {
     let mut stream = TcpStream::connect(ADDRESS).await?;
 
     // 1 - multistream-select negotiation to negotiate the Noise protocol
